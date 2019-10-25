@@ -118,14 +118,26 @@ timescale = 0
 ref_point = time.perf_counter()
 print('translation start:', ref_point)
 
+class Bytestream(object):
+
+    def __init__(self, unit, type, header=None, ready_to_go=False):
+        self.unit = unit
+        self.type = type
+        self.header = header
+        self.ready_to_go = ready_to_go
+
+    def makeheader(self, **kwargs):
+        if self.header != None:
+            print('Warning: existing header will be overwrited')
+
 
 class Transmitter(object):
 
-    def __init__(self, socket):
+    def __init__(self, socket, address, mode):
         self.socket = socket
+        self.address = address
+        self.mode = mode
 
-    def make_header(self, header):
-        self.bytes = header + self.bytes
 
     def transmit(bytestream, mode='single'):
         for index, byte in enumerate(bytestream):
