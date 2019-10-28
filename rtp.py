@@ -40,10 +40,10 @@ class Transmitter():
 
     def send_unit(self, unit, type='single', **kwargs):
         if type == 'single':
-        header = self.make_header(unit, type, kwargs['identificator'])
-        self.socket_.sendto(header+unit, **self.address)
-        self.SN = (self.SN + 1) % 2**16
-        self.timestamp += self.delay
+            header = self.make_header(unit, type, kwargs['identificator'])
+            self.socket_.sendto(header+unit, **self.address)
+            self.SN = (self.SN + 1) % 2**16
+            self.timestamp += self.delay
 
         elif type == 'FU-A':
             N = len(unit) / kwargs['packetsize']
