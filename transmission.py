@@ -43,7 +43,12 @@ class Transmitter:
     def get_preferences_from_file(self):
         pass
 
-    def cut_slices(self, unit):
+    @staticmethod
+    def cut_slices(self, unit, unit_size, n) -> iter:
+        for i in range(n):
+            yield unit[(unit_size-2)*i+1:(unit_size-2)*(i+1)+1]
+
+    def generate_sdp(self):
         pass
 
     def make_header(self, p=0, **kwargs) -> bytes:
@@ -68,11 +73,11 @@ class Transmitter:
 
         return header
 
-    def send_packet(self, packet):
+    def send_packet(self, packet) -> None:
         self.sock.sendto(packet, self.address)
         self.packets_send += 1
 
-    def send_unit(self, unit, rtp_type='single', **kwargs):
+    def send_unit(self, unit, rtp_type='single', **kwargs) -> None:
         if rtp_type == 'single':
             header = self.make_header(rtp_type=rtp_type, p=0)
             self.send_packet(header+unit)
@@ -93,9 +98,8 @@ class Transmitter:
         self.sn = (self.sn + 1) % 2 ** 16
         print(round(self.timestamp))
         self.timestamp += self.delay
-        return 0
 
-    def transmit(self, mode: str = None, packet_size: int = 260) -> object:
+    def transmit(self, mode: str = None, packet_size: int = 260) -> None:
         try:
             file = open(self.file, 'rb')
             bytestream = bytearray(file.read())
@@ -123,5 +127,3 @@ class Transmitter:
             k += 1
 
         print(f'While transmission {self.packets_send} packets and {k} units were send')
-
-        return 0
