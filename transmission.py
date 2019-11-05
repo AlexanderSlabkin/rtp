@@ -23,13 +23,13 @@ class Transmitter:
                  timestamp: bytes = getrandbits(16), ssrc: bytes = getrandbits(16),
                  cc: int = 0, v: int = 2, x: bool = 0, m: bool = 0):
         self.address = address
-        self.socket_ = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.file = file
         self.mode = mode
         self.sn = sn
         if not 1 < fps < 200:
             print('Error: wrong frame rate')
-            sys.exit(2)
+            sys.exit(1)
         self.delay = Frac((1/fps)) * 90000
         self.timestamp = timestamp * self.delay
         print(round(self.timestamp), self.timestamp)
@@ -41,6 +41,9 @@ class Transmitter:
         self.packets_send = 0
 
     def get_preferences_from_file(self):
+        pass
+
+    def cut_slices(self, unit):
         pass
 
     def make_header(self, p=0, **kwargs) -> bytes:
@@ -66,7 +69,7 @@ class Transmitter:
         return header
 
     def send_packet(self, packet):
-        self.socket_.sendto(packet, self.address)
+        self.sock.sendto(packet, self.address)
         self.packets_send += 1
 
     def send_unit(self, unit, rtp_type='single', **kwargs):
@@ -98,7 +101,7 @@ class Transmitter:
             bytestream = bytearray(file.read())
         except FileNotFoundError:
             print('File not found')
-            sys.exit(1)
+            sys.exit(2)
         unit_size = None
 
         if mode:
@@ -108,7 +111,7 @@ class Transmitter:
             unit_size = packet_size - (12 + self.cc * 4)
             if unit_size < 32:
                 print('Error: Too small packet_size')
-                sys.exit(2)
+                sys.exit(3)
         k = 0
         while len(bytestream) > 1:
 
