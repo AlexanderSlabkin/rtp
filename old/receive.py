@@ -1,31 +1,9 @@
-"""
+#!/usr/bin/env python3
+import socket, struct
 
-
-
-"""
-
-import socket
-import struct
-
-
-class Receiver:
-    def __init__(self, file: str = 'received1.h264', address: tuple = ('127.0.0.1', 5000), mode: str = 'single'):
-        self.address = address
-        self.mode = mode
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.bind(address)
-
-    def receive(self):
-        while True:
-            try:
-                data = self.sock.recvfrom(65565)
-            except socket.timeout:
-                print
-
-
-
-'''
-
+# Setup socket object
+UDP_IP = "127.0.0.1"
+UDP_PORT = 5000
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # Internet # UDP
 sock.bind((UDP_IP, UDP_PORT))
@@ -34,6 +12,8 @@ packets = []
 nals = []
 fudata = b''
 print("Starting socket on", UDP_IP, ":", UDP_PORT, end='\n')
+
+sum1, sum2, M = 0, 0, 0
 
 while True:
     try:
@@ -127,4 +107,3 @@ print(bi2)
 
 file2.close()
 # ffmpeg -f h264 -i rawdata.h264 -vcodec copy output.mp4
-'''
