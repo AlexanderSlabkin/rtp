@@ -7,8 +7,9 @@
 
 import argparse
 
-from transmission import Transmitter
+from time import localtime
 
+from transmission import Transmitter
 from reception import Receiver
 
 
@@ -23,8 +24,8 @@ parser.add_argument('-t', '--transmit', dest='transmit_flag', action='store_true
 
 args = parser.parse_args()
 
-print(args.receive_flag)
 if args.transmit_flag:
+    print(f'Translation start at {localtime().tm_hour}:{localtime().tm_min:02d}')
     T = Transmitter(args.File, (args.IP, args.Port), args.Mode)
     T.transmit()
 
