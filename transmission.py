@@ -132,14 +132,12 @@ class Transmitter:
             header = self.make_header(p=0, first_byte=unit[0], flag='m',
                                       rtp_type=rtp_type)
             self.send_packet(header + unit[(fu_a_size - 2) * i + 1:(fu_a_size - 2) * (i + 1) + 1])
-        padding_size = fu_a_size - 2 - len(unit[(fu_a_size - 2) * (n - 1) + 1:])
-        print(f'padding size is {int(padding_size > 0)}, padding size {padding_size}', f'{fu_a_size}',
-        f'{- 2 - len(unit[(fu_a_size - 2) * (n - 1) + 1:])}', len(unit), n, sep='\n')
-        header = self.make_header(p=int(padding_size > 0), first_byte=unit[0], rtp_type=rtp_type, flag='e')
+        padding_size, p = fu_a_size - 2 - len(unit[(fu_a_size - 2) * (n - 1) + 1:]), int(padding_size > 0)
+        header = self.make_header(p=p, first_byte=unit[0], rtp_type=rtp_type, flag='e')
         self.send_packet(
             header + unit[(fu_a_size - 2) * (n - 1) + 1:]
-            + int(padding_size > 0)*(bytes([0]*(padding_size-1))
-                                     + bytes([padding_size]))
+            + p*(bytes([0]*(padding_size-1))
+                 + bytes([padding_size]))
                         )
         self.time_job(unit[0])
 
