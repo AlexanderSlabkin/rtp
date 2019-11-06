@@ -47,7 +47,7 @@ class Transmitter:
         self.delay_status = True
         if self.delay_status:
             self.my_sleep = sleep
-        self.print_status = True
+        self.print_status = False
         if self.print_status:
             self.my_print = print
 
@@ -98,34 +98,8 @@ class Transmitter:
         self.sn = (self.sn + 1) % 2 ** 16
         self.packets_send += 1
 
-    def send_unit(self, unit, rtp_type='single', **kwargs) -> None:
-        if rtp_type == 'single':
-            header = self.make_header(rtp_type=rtp_type, p=0)
-            self.send_packet(header+unit)
-
-        elif rtp_type == 'FU-A':
-            fu_a_size = kwargs['fu_a_size']
-            # fu_a = self.cut_slices(unit, fu_a_size)
-            # header = self.make_header(p=0, first_byte=unit[0], rtp_type=rtp_type, flag='s')
-            # self.send_packet(header + next(fu_a))
-            # for i in fu_a:
-            #     header = self.make_header(p=0, first_byte=unit[0], rtp_type=rtp_type,
-            #                               flag='m')
-            #     self.send_packet(header + i)
-            # header = self.make_header(p=0, first_byte=unit[0], rtp_type=rtp_type, flag='e')
-            # self.send_packet(header + next(fu_a))
-            n = ceil((len(unit) - 1) / fu_a_size - 2)
-            header = self.make_header(p=0, flag='s', first_byte=unit[0],
-                                      rtp_type=rtp_type)
-            self.send_packet(header + unit[1:fu_a_size - 1])
-            for i in range(1, n - 1):
-                header = self.make_header(p=0, first_byte=unit[0], flag='m',
-                                          rtp_type=rtp_type)
-                self.send_packet(header + unit[(fu_a_size - 2) * i + 1:(fu_a_size - 2) * (i + 1) + 1])
-            header = self.make_header(p=0, first_byte=unit[0], rtp_type=rtp_type, flag='e')
-            self.send_packet(header + unit[(fu_a_size - 2) * (n - 1) + 1:])
-
-        if unit[0] & self.type_mask in [1, 5]:
+    def time_job(self, first_byte):
+        if first_byte & self.type_mask in [1, 5]:
             self.timestamp += self.delay
             current_time = perf_counter() - self.ref_point
             delay = self.timescale - current_time
@@ -133,6 +107,41 @@ class Transmitter:
                 self.my_sleep(delay)
             self.timescale += self.delay1
             self.my_print(float(self.timescale))
+
+    def send_unit_single(self, unit, rtp_type='single') -> None:
+        header = self.make_header(rtp_type=rtp_type, p=0)
+        self.send_packet(header+unit)
+        self.time_job(unit[0])
+
+    def send_unit_fu_a(self, unit, rtp_type='FU-A', **kwargs):
+        fu_a_size, padding_size = kwargs['fu_a_size'], 0
+        # fu_a = self.cut_slices(unit, fu_a_size)
+        # header = self.make_header(p=0, first_byte=unit[0], rtp_type=rtp_type, flag='s')
+        # self.send_packet(header + next(fu_a))
+        # for i in fu_a:
+        #     header = self.make_header(p=0, first_byte=unit[0], rtp_type=rtp_type,
+        #                               flag='m')
+        #     self.send_packet(header + i)
+        # header = self.make_header(p=0, first_byte=unit[0], rtp_type=rtp_type, flag='e')
+        # self.send_packet(header + next(fu_a))
+        n = ceil((len(unit) - 1) / (fu_a_size - 2))
+        header = self.make_header(p=0, flag='s', first_byte=unit[0],
+                                  rtp_type=rtp_type)
+        self.send_packet(header + unit[1:fu_a_size - 1])
+        for i in range(1, n - 1):
+            header = self.make_header(p=0, first_byte=unit[0], flag='m',
+                                      rtp_type=rtp_type)
+            self.send_packet(header + unit[(fu_a_size - 2) * i + 1:(fu_a_size - 2) * (i + 1) + 1])
+        padding_size = fu_a_size - 2 - len(unit[(fu_a_size - 2) * (n - 1) + 1:])
+        print(f'padding size is {int(padding_size > 0)}, padding size {padding_size}', f'{fu_a_size}',
+        f'{- 2 - len(unit[(fu_a_size - 2) * (n - 1) + 1:])}', len(unit), n, sep='\n')
+        header = self.make_header(p=int(padding_size > 0), first_byte=unit[0], rtp_type=rtp_type, flag='e')
+        self.send_packet(
+            header + unit[(fu_a_size - 2) * (n - 1) + 1:]
+            + int(padding_size > 0)*(bytes([0]*(padding_size-1))
+                                     + bytes([padding_size]))
+                        )
+        self.time_job(unit[0])
 
     def transmit(self, mode: str = None, packet_size: int = 260) -> None:
         try:
@@ -144,6 +153,8 @@ class Transmitter:
         fu_a_size = None
         print(f'File opened successfully, transmitting {self.file} to {self.address[0]:s}, port: {self.address[1]}')
 
+        senders = {'single': self.send_unit_single, 'FU-A': self.send_unit_fu_a}
+
         if mode:
             self.mode = mode
 
@@ -152,13 +163,15 @@ class Transmitter:
             if fu_a_size < 32:
                 print('Error: Too small packet_size')
                 sys.exit(3)
+
+        send = senders[self.mode]
         k = 0
         self.ref_point = perf_counter()
         while len(bytestream) > 1:
 
             end = bytestream.find(bytes((0, 0, 0, 1)), 1)
             unit = bytestream[4:end]
-            self.send_unit(unit, self.mode, fu_a_size=fu_a_size)
+            send(unit, self.mode, fu_a_size=fu_a_size)
 
             del bytestream[:end]
             k += 1
