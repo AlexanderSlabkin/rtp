@@ -34,7 +34,6 @@ class Transmitter:
             sys.exit(1)
         self.delay = Frac((1/fps)) * 90000
         self.timestamp = timestamp * self.delay
-        print(round(self.timestamp), self.timestamp)
         self.ssrc = ssrc
         self.cc = cc
         self.v = v
@@ -44,6 +43,7 @@ class Transmitter:
         self.timescale = Frac(0.0)
         self.delay1 = Frac(1/fps)
         self.ref_point = 0
+        self.first_byte = 0
         self.delay_status = True
         if self.delay_status:
             self.my_sleep = sleep
@@ -65,19 +65,20 @@ class Transmitter:
     @staticmethod
     def cut_slices(unit, fu_a_size) -> iter:
         n = ceil((len(unit) - 1) / fu_a_size - 2)
+        flags = ['s'] + (n-2)*['m'] + ['e']
         for i in range(n):
-            yield unit[(fu_a_size-2)*i+1:(fu_a_size-2)*(i+1)+1]
+            yield unit[(fu_a_size-2)*i+1:(fu_a_size-2)*(i+1)+1], flags[i]
 
     def generate_sdp(self):
         pass
 
     def make_header(self, p=0, **kwargs) -> bytes:
         nal_header = bytes()
-        if kwargs['rtp_type'] == 'FU-A':
+        if self.mode == 'FU-A':
             unit_type = kwargs['first_byte'] & self.type_mask
             unit_nri = kwargs['first_byte'] & self.nri_mask
             fu_header = unit_type
-            indicator = self.unit_types[kwargs['rtp_type']] | unit_nri
+            indicator = self.unit_types[self.mode] | unit_nri
             if kwargs['flag'] == 's':
                 fu_header = 0b10000000 | fu_header
             elif kwargs['flag'] == 'e':
@@ -85,7 +86,7 @@ class Transmitter:
             nal_header = struct.pack('!BB', indicator, fu_header)
 
         first_byte = self.v << 6 | (p << 5) | (self.x << 4) | self.cc
-        second_byte = (self.m << 7) | self.pt[kwargs['rtp_type']]
+        second_byte = (self.m << 7) | self.pt[self.mode]
         rtp_header = struct.pack('!BBHII', first_byte, second_byte, self.sn,
                                  round(self.timestamp), self.ssrc)
 
@@ -93,8 +94,11 @@ class Transmitter:
 
         return header
 
-    def send_packet(self, packet) -> None:
-        self.sock.sendto(packet, self.address)
+    def send_packet(self, fu_a): # , flag, rtp_type) -> None:
+        # header = self.make_header(p=0, flag=flag, first_byte=self.first_byte,
+        #                            rtp_type=rtp_type)
+        # print(len(header), len(header+fu_a))
+        self.sock.sendto(fu_a, self.address)
         self.sn = (self.sn + 1) % 2 ** 16
         self.packets_send += 1
 
@@ -108,32 +112,26 @@ class Transmitter:
             self.timescale += self.delay1
             self.my_print(float(self.timescale))
 
-    def send_unit_single(self, unit, rtp_type='single') -> None:
-        header = self.make_header(rtp_type=rtp_type, p=0)
+    def send_unit_single(self, unit, **kwargs) -> None:
+        header = self.make_header(p=0)
         self.send_packet(header+unit)
         self.time_job(unit[0])
 
-    def send_unit_fu_a(self, unit, rtp_type='FU-A', **kwargs):
+    def send_unit_fu_a(self, unit, **kwargs) -> None:
         fu_a_size, padding_size = kwargs['fu_a_size'], 0
-        # fu_a = self.cut_slices(unit, fu_a_size)
-        # header = self.make_header(p=0, first_byte=unit[0], rtp_type=rtp_type, flag='s')
-        # self.send_packet(header + next(fu_a))
-        # for i in fu_a:
-        #     header = self.make_header(p=0, first_byte=unit[0], rtp_type=rtp_type,
-        #                               flag='m')
-        #     self.send_packet(header + i)
-        # header = self.make_header(p=0, first_byte=unit[0], rtp_type=rtp_type, flag='e')
-        # self.send_packet(header + next(fu_a))
+        # fu_as = self.cut_slices(unit, fu_a_size)
+        # self.first_byte = unit[0]
+        # for i in fu_as:
+        #     # print(len(i), len(i[0]), i[1])
+        #     self.send_packet(i[0], flag=i[1], rtp_type=rtp_type)
         n = ceil((len(unit) - 1) / (fu_a_size - 2))
-        header = self.make_header(p=0, flag='s', first_byte=unit[0],
-                                  rtp_type=rtp_type)
+        header = self.make_header(p=0, flag='s', first_byte=unit[0])
         self.send_packet(header + unit[1:fu_a_size - 1])
         for i in range(1, n - 1):
-            header = self.make_header(p=0, first_byte=unit[0], flag='m',
-                                      rtp_type=rtp_type)
+            header = self.make_header(p=0, first_byte=unit[0], flag='m')
             self.send_packet(header + unit[(fu_a_size - 2) * i + 1:(fu_a_size - 2) * (i + 1) + 1])
-        padding_size, p = fu_a_size - 2 - len(unit[(fu_a_size - 2) * (n - 1) + 1:]), int(padding_size > 0)
-        header = self.make_header(p=p, first_byte=unit[0], rtp_type=rtp_type, flag='e')
+        padding_size, p = fu_a_size - 2 - len(unit[(fu_a_size - 2) * (n - 1) + 1:]), padding_size > 0
+        header = self.make_header(p=p, first_byte=unit[0], flag='e')
         self.send_packet(
             header + unit[(fu_a_size - 2) * (n - 1) + 1:]
             + p*(bytes([0]*(padding_size-1))
@@ -169,7 +167,7 @@ class Transmitter:
 
             end = bytestream.find(bytes((0, 0, 0, 1)), 1)
             unit = bytestream[4:end]
-            send(unit, self.mode, fu_a_size=fu_a_size)
+            send(unit, fu_a_size=fu_a_size)
 
             del bytestream[:end]
             k += 1
