@@ -123,6 +123,7 @@ class Transmitter:
         try:
             file = open(self.file, 'rb')
             bytestream = bytearray(file.read())
+            file.close()
         except FileNotFoundError:
             print('File not found')
             sys.exit(2)
@@ -151,5 +152,7 @@ class Transmitter:
 
             del bytestream[:end]
             k += 1
+
+        self.sock.close()
 
         print(f'While transmission {self.packets_send} packets and {k} units were send')

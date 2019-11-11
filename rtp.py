@@ -30,4 +30,6 @@ if args.transmit_flag:
     T.transmit()
 
 if args.receive_flag:
+    print(f'Reception start at {localtime().tm_hour}:{localtime().tm_min:02d}')
     R = Receiver(args.File, (args.IP, args.Port), args.Mode)
+    R.receive()
