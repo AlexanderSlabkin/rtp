@@ -44,6 +44,7 @@ class Transmitter:
         self.delay1 = Frac(1/fps)
         self.ref_point = 0
         self.first_byte = 0
+        self.fu_a_size = 0
         self.delay_status = True
         if self.delay_status:
             self.my_sleep = sleep
@@ -57,19 +58,6 @@ class Transmitter:
 
     @staticmethod
     def my_print(*args):
-        pass
-
-    def get_preferences_from_file(self):
-        pass
-
-    @staticmethod
-    def cut_slices(unit, fu_a_size) -> iter:
-        n = ceil((len(unit) - 1) / fu_a_size - 2)
-        flags = ['s'] + (n-2)*['m'] + ['e']
-        for i in range(n):
-            yield unit[(fu_a_size-2)*i+1:(fu_a_size-2)*(i+1)+1], flags[i]
-
-    def generate_sdp(self):
         pass
 
     def make_header(self, p=0, **kwargs) -> bytes:
@@ -94,10 +82,7 @@ class Transmitter:
 
         return header
 
-    def send_packet(self, fu_a): # , flag, rtp_type) -> None:
-        # header = self.make_header(p=0, flag=flag, first_byte=self.first_byte,
-        #                            rtp_type=rtp_type)
-        # print(len(header), len(header+fu_a))
+    def send_packet(self, fu_a):
         self.sock.sendto(fu_a, self.address)
         self.sn = (self.sn + 1) % 2 ** 16
         self.packets_send += 1
@@ -112,28 +97,23 @@ class Transmitter:
             self.timescale += self.delay1
             self.my_print(float(self.timescale))
 
-    def send_unit_single(self, unit, **kwargs) -> None:
+    def send_unit_single(self, unit) -> None:
         header = self.make_header(p=0)
         self.send_packet(header+unit)
         self.time_job(unit[0])
 
-    def send_unit_fu_a(self, unit, **kwargs) -> None:
-        fu_a_size, padding_size = kwargs['fu_a_size'], 0
-        # fu_as = self.cut_slices(unit, fu_a_size)
-        # self.first_byte = unit[0]
-        # for i in fu_as:
-        #     # print(len(i), len(i[0]), i[1])
-        #     self.send_packet(i[0], flag=i[1], rtp_type=rtp_type)
-        n = ceil((len(unit) - 1) / (fu_a_size - 2))
+    def send_unit_fu_a(self, unit) -> None:
+        padding_size = 0
+        n = ceil((len(unit) - 1) / (self.fu_a_size - 2))
         header = self.make_header(p=0, flag='s', first_byte=unit[0])
-        self.send_packet(header + unit[1:fu_a_size - 1])
+        self.send_packet(header + unit[1:self.fu_a_size - 1])
         for i in range(1, n - 1):
             header = self.make_header(p=0, first_byte=unit[0], flag='m')
-            self.send_packet(header + unit[(fu_a_size - 2) * i + 1:(fu_a_size - 2) * (i + 1) + 1])
-        padding_size, p = fu_a_size - 2 - len(unit[(fu_a_size - 2) * (n - 1) + 1:]), padding_size > 0
+            self.send_packet(header + unit[(self.fu_a_size - 2) * i + 1:(self.fu_a_size - 2) * (i + 1) + 1])
+        padding_size, p = self.fu_a_size - 2 - len(unit[(self.fu_a_size - 2) * (n - 1) + 1:]), padding_size > 0
         header = self.make_header(p=p, first_byte=unit[0], flag='e')
         self.send_packet(
-            header + unit[(fu_a_size - 2) * (n - 1) + 1:]
+            header + unit[(self.fu_a_size - 2) * (n - 1) + 1:]
             + p*(bytes([0]*(padding_size-1))
                  + bytes([padding_size]))
                         )
@@ -146,7 +126,6 @@ class Transmitter:
         except FileNotFoundError:
             print('File not found')
             sys.exit(2)
-        fu_a_size = None
         print(f'File opened successfully, transmitting {self.file} to {self.address[0]:s}, port: {self.address[1]}')
 
         senders = {'single': self.send_unit_single, 'FU-A': self.send_unit_fu_a}
@@ -159,6 +138,7 @@ class Transmitter:
             if fu_a_size < 32:
                 print('Error: Too small packet_size')
                 sys.exit(3)
+            self.fu_a_size = fu_a_size
 
         send = senders[self.mode]
         k = 0
@@ -167,7 +147,7 @@ class Transmitter:
 
             end = bytestream.find(bytes((0, 0, 0, 1)), 1)
             unit = bytestream[4:end]
-            send(unit, fu_a_size=fu_a_size)
+            send(unit)
 
             del bytestream[:end]
             k += 1
